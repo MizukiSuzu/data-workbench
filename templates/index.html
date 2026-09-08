@@ -1,0 +1,204 @@
+<!DOCTYPE HTML>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Data Workbench</title>
+
+        <script src="https://cdn.tailwindcss.com"></script>
+
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@450&display=swap" rel="stylesheet">
+
+        <link rel="stylesheet" href="/static/css/style.css">
+    </head>
+
+    <body>
+
+        <nav class="bg-white border-b border-gray-200 px-6 h-16 flex items-center justify-between sticky top-0 z-10">
+            <div class="flex items-center gap-8">
+                <span class="text-lg font-bold ">Data Workbench</span>
+                <div class="flex item-center gap-4">
+                    <a href="#" data-tab="tab-upload" class="text-sm pb-1">Load Data</a>
+                    <a href="#" data-tab="tab-summary" class="text-sm pb-1">Summary Stats</a>
+                    <a href="#" data-tab="tab-clean" class="text-sm pb-1">Clean Data</a>
+                    <a href="#" data-tab="tab-visualize" class="text-sm pb-1">Visualize</a>
+                </div>
+            </div>
+        </nav>
+
+        <section id="tab-upload">
+            <!-- Page header -->
+            <div class="bg-blue-50 border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+                <h1 class="text-xl font-semibold">Upload Dataset</h1>
+                <div class="flex gap-3">
+                <button class="px-4 py-2 border border-gray-300 rounded-lg text-sm bg-white hover:bg-gray-50">Export CSV</button>
+                <button class="px-4 py-2 bg-black text-white rounded-lg text-sm hover:opacity-90">Run Analysis</button>
+                </div>
+            </div>
+
+            <div class="max-w-7xl mx-auto px-6 py-8 grid grid-cols-3 gap-6">
+
+                <!-- Upload zone (takes 2 cols) -->
+                <div class="col-span-2 border-2 border-dashed border-gray-300 rounded-xl p-16 flex flex-col items-center justify-center text-center hover:border-blue-500 hover:bg-blue-50 cursor-pointer transition-all">
+                <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4">
+                    <span class="text-2xl">↑</span>
+                </div>
+                <h2 class="text-lg font-semibold mb-2">Drag & Drop Dataset</h2>
+                <p class="text-gray-400 text-sm mb-4">Support for .csv and .json files</p>
+                <div class="flex gap-2 mb-6">
+                    <span class="px-2 py-1 bg-gray-100 text-xs font-bold rounded">CSV</span>
+                    <span class="px-2 py-1 bg-gray-100 text-xs font-bold rounded">JSON</span>
+                </div>
+                <button class="px-6 py-2 bg-black text-white rounded-lg text-sm">Choose File</button>
+                <input type="file" id="file-input" accept=".csv,.json" class="hidden">
+                </div>
+
+                <!-- Info cards (1 col) -->
+                <div class="flex flex-col gap-4">
+                <div class="bg-white border border-gray-200 rounded-xl p-4">
+                    <p class="text-xs text-gray-400 uppercase mb-2">Current Source</p>
+                    <p class="text-sm text-gray-500">No file connected</p>
+                </div>
+                <div class="bg-gray-900 text-white rounded-xl p-4">
+                    <p class="text-xs text-gray-400 uppercase mb-2">Data Tip</p>
+                    <p class="text-sm text-gray-300">Ensure your headers are in the first row for automatic column detection.</p>
+                </div>
+                </div>
+
+                <!-- Preview table (full width) -->
+                <div class="col-span-3">
+                <h2 class="text-lg font-semibold mb-1">Data Preview</h2>
+                <p class="text-sm text-gray-400 mb-4">First 10 rows of your dataset</p>
+                <div class="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                    <div id="preview-table" class="p-8 text-center text-gray-400 text-sm">
+                    No file loaded yet
+                    </div>
+                </div>
+                </div>
+
+            </div>
+            </section>
+
+        <section id="tab-summary" class="hidden">
+            <div class="max-w-7x1 mx-auto px-6 py-8">
+
+                <h1 class="text-2xl font-bold mb-2">Summary Stats</h1>
+                <p class="text-gray-500 mb-8">Key statistics for every column in your dataset.</p>
+
+                <!-- Overview Cards -->
+                <div class="grid grid-cols-4 gap-4 mb-8">
+                    <div class="bg-white border border-gray-200 rounded-x1 p-5">
+                        <p class="text-xs text-gray-500 uppercase mb-1">Rows</p>
+                        <p class="text-3xl font-light" id="stats-row">0</p>
+                    </div>
+                    <div class="bg-white border border-gray-200 rounded-x1 p-5">
+                        <p class="text-xs text-gray-500 uppercase mb-1">Columns</p>
+                        <p class="text-3xl font-light" id="stats-column">0</p>
+                    </div>
+                    <div class="bg-white border border-gray-200 rounded-x1 p-5">
+                        <p class="text-xs text-gray-500 uppercase mb-1">Numeric</p>
+                        <p class="text-3xl font-light" id="stats-numeric">0</p>
+                    </div>
+                    <div class="bg-white border border-gray-200 rounded-x1 p-5">
+                        <p class="text-xs text-gray-500 uppercase mb-1">Missing Cells</p>
+                        <p class="text-3xl font-light" id="stats-missing">0</p>
+                    </div>
+
+                    <div class="bg-white border border-gray-200 rounded-lg p-8 text-center text-gray-400">
+                        Load a dataset first to see column statistics.
+                    </div>
+                </div>
+            </div>"
+        </section>
+
+        <section id="tab-clean" class="hidden">
+            <div class="max-w-7xl mx-auto px-6 py-8">
+
+                <h1 class="text-2xl font-bold mb-2">Clean Data</h1>
+                <p class="text-gray-500 mb-8">Fix missing values, remove duplicates, and drop columns.</p>
+
+                <!-- Action buttons -->
+                <h3 class="text-xs text-gray-400 uppercase mb-4">Actions</h3>
+                <div class="grid grid-cols-3 gap-4 mb-8">
+                <button class="bg-white border border-gray-200 rounded-xl p-5 text-left hover:border-blue-500 transition-colors">
+                    <p class="font-semibold mb-1">Drop missing rows</p>
+                    <p class="text-sm text-gray-400">Remove any row with a null value</p>
+                </button>
+                <button class="bg-white border border-gray-200 rounded-xl p-5 text-left hover:border-blue-500 transition-colors">
+                    <p class="font-semibold mb-1">Fill with mean</p>
+                    <p class="text-sm text-gray-400">Replace nulls with the column mean</p>
+                </button>
+                <button class="bg-white border border-gray-200 rounded-xl p-5 text-left hover:border-blue-500 transition-colors">
+                    <p class="font-semibold mb-1">Fill with median</p>
+                    <p class="text-sm text-gray-400">More robust than mean imputation</p>
+                </button>
+                <button class="bg-white border border-gray-200 rounded-xl p-5 text-left hover:border-blue-500 transition-colors">
+                    <p class="font-semibold mb-1">Fill with zero</p>
+                    <p class="text-sm text-gray-400">Replace nulls with 0</p>
+                </button>
+                <button class="bg-white border border-gray-200 rounded-xl p-5 text-left hover:border-blue-500 transition-colors">
+                    <p class="font-semibold mb-1">Remove duplicates</p>
+                    <p class="text-sm text-gray-400">Drop identical rows</p>
+                </button>
+                </div>
+
+                <!-- Drop column -->
+                <h3 class="text-xs text-gray-400 uppercase mb-4">Drop a column</h3>
+                <div class="flex gap-3 mb-8">
+                <select id="col-select" class="border border-gray-200 rounded-lg px-4 py-2 text-sm">
+                    <option>No dataset loaded</option>
+                </select>
+                <button class="bg-red-50 border border-red-300 text-red-600 px-4 py-2 rounded-lg text-sm">Drop column</button>
+                </div>
+
+                <!-- Action log -->
+                <div id="clean-log" class="flex flex-col gap-2"></div>
+
+            </div>
+            </section>
+
+        <section id="tab-visualize" class="hidden">
+            <div class="max-w-7xl mx-auto px-6 py-8">
+
+                <h1 class="text-2xl font-bold mb-2">Visualize</h1>
+                <p class="text-gray-500 mb-8">Plot your data to find patterns and relationships.</p>
+
+                <!-- Controls -->
+                <div class="bg-white border border-gray-200 rounded-xl p-6 flex gap-6 items-end mb-8">
+                <div class="flex flex-col gap-2">
+                    <label class="text-xs text-gray-400 uppercase">Chart type</label>
+                    <select id="chart-type" class="border border-gray-200 rounded-lg px-4 py-2 text-sm">
+                    <option value="histogram">Histogram</option>
+                    <option value="bar">Bar chart</option>
+                    <option value="scatter">Scatter plot</option>
+                    <option value="correlation">Correlation heatmap</option>
+                    </select>
+                </div>
+                <div class="flex flex-col gap-2">
+                    <label class="text-xs text-gray-400 uppercase">X column</label>
+                    <select id="col-x" class="border border-gray-200 rounded-lg px-4 py-2 text-sm">
+                    <option>No dataset loaded</option>
+                    </select>
+                </div>
+                <div class="flex flex-col gap-2">
+                    <label class="text-xs text-gray-400 uppercase">Y column</label>
+                    <select id="col-y" class="border border-gray-200 rounded-lg px-4 py-2 text-sm">
+                    <option>No dataset loaded</option>
+                    </select>
+                </div>
+                <button class="bg-black text-white px-6 py-2 rounded-lg text-sm">Draw chart</button>
+                </div>
+
+                <!-- Chart area -->
+                <div class="bg-white border border-gray-200 rounded-xl p-8 flex items-center justify-center" style="height: 400px;">
+                <p class="text-gray-400">Chart will appear here after you load data and click Draw</p>
+                </div>
+
+                <!-- Chart tip -->
+                <p id="chart-tip" class="mt-4 text-sm text-gray-400 italic"></p>
+
+            </div>
+        </section>
+    <script src="/static/js/app.js"></script>
+    </body>
+</html>

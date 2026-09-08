@@ -1,0 +1,28 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  background-color: #f8f9ff;
+  color: #0b1c30;
+}
+
+nav a {
+  text-decoration: none;
+  color: #45464d;
+  font-size: 14px;
+  padding-bottom: 4px;
+}
+
+nav a:hover {
+  color: #0058be;
+}
+
+nav a.active {
+  color: #0058be !important;
+  font-weight: 700 !important;
+  border-bottom: 2px solid #0058be !important;
+}
