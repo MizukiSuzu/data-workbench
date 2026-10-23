@@ -35,6 +35,9 @@ const currentSource = document.getElementById('current-source')
 const previewTable = document.getElementById('preview-table')
 const statsTable = document.getElementById('stats-table')
 
+let dataset = null  // last API response: the working copy of the data
+let fileName = 'data.csv'
+
 function showTab(tabId) {
   document.querySelector(`[data-tab="${tabId}"]`).click()
 }
@@ -55,6 +58,7 @@ function renderTable(headers, rows) {
 }
 
 function renderSummary(data) {
+  dataset = data
   document.getElementById('stats-row').textContent = data.rows
   document.getElementById('stats-column').textContent = data.columns
   document.getElementById('stats-numeric').textContent = data.numeric
@@ -62,11 +66,12 @@ function renderSummary(data) {
 
   const cols = data.column_names
   previewTable.className = 'overflow-x-auto'
-  previewTable.innerHTML = renderTable(cols, data.preview.map(r => cols.map(c => r[c])))
+  previewTable.innerHTML = renderTable(cols, data.data.slice(0, 10).map(r => cols.map(c => r[c])))
 
   const keys = ['dtype', 'missing', 'unique', 'mean', 'std', 'min', 'median', 'max', 'top']
   statsTable.className = 'bg-white border border-gray-200 rounded-xl overflow-x-auto'
   statsTable.innerHTML = renderTable(['column', ...keys], data.stats.map(s => [s.name, ...keys.map(k => s[k])]))
+  fillColumnSelects()
 }
 
 async function uploadFile(file) {
@@ -78,6 +83,8 @@ async function uploadFile(file) {
     const data = await res.json()
     if (!res.ok) throw new Error(data.error || `Upload failed (${res.status})`)
     currentSource.textContent = file.name
+    fileName = file.name.replace(/\.json$/i, '.csv')
+    document.getElementById('clean-log').innerHTML = ''
     renderSummary(data)
   } catch (err) {
     currentSource.textContent = err.message
@@ -92,3 +99,171 @@ dropZone.addEventListener('drop', e => {
   if (e.dataTransfer.files[0]) uploadFile(e.dataTransfer.files[0])
 })
 document.getElementById('run-analysis').addEventListener('click', () => showTab('tab-summary'))
+
+
+// --- Column selects ---
+
+function numericColumns() {
+  return dataset.stats.filter(s => 'mean' in s).map(s => s.name)
+}
+
+function setOptions(select, names) {
+  const keep = select.value
+  select.innerHTML = names.map(n => `<option>${escapeHtml(n)}</option>`).join('')
+  if (names.includes(keep)) select.value = keep
+}
+
+function fillColumnSelects() {
+  setOptions(document.getElementById('col-select'), dataset.column_names)
+  setOptions(document.getElementById('col-x'), dataset.column_names)
+  setOptions(document.getElementById('col-y'), ['(count)', ...numericColumns()])
+}
+
+
+// --- Export CSV ---
+
+function toCsv() {
+  const cols = dataset.column_names
+  const cell = v => {
+    if (v === null || v === undefined) return ''
+    const s = String(v)
+    return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+  }
+  return [cols, ...dataset.data.map(r => cols.map(c => r[c]))].map(row => row.map(cell).join(',')).join('\n')
+}
+
+document.getElementById('export-csv').addEventListener('click', () => {
+  if (!dataset) return alert('Load a dataset first.')
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(new Blob([toCsv()], { type: 'text/csv' }))
+  a.download = fileName
+  a.click()
+  URL.revokeObjectURL(a.href)
+})
+
+
+// --- Clean ---
+
+const cleanLog = document.getElementById('clean-log')
+
+function logClean(text, isError) {
+  const color = isError ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-700'
+  cleanLog.insertAdjacentHTML('afterbegin', `<p class="${color} rounded-lg px-4 py-2 text-sm">${escapeHtml(text)}</p>`)
+}
+
+async function runClean(action, column) {
+  if (!dataset) return logClean('Load a dataset first.', true)
+  // Vercel functions keep no state, so the current data goes back up as CSV
+  const form = new FormData()
+  form.append('file', new Blob([toCsv()], { type: 'text/csv' }), 'data.csv')
+  form.append('action', action)
+  if (column) form.append('column', column)
+  try {
+    const res = await fetch('/api/clean', { method: 'POST', body: form })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error || `Clean failed (${res.status})`)
+    renderSummary(data)
+    logClean(`${data.message} (now ${data.rows} rows, ${data.columns} columns)`)
+  } catch (err) {
+    logClean(err.message, true)
+  }
+}
+
+document.querySelectorAll('[data-action]').forEach(btn =>
+  btn.addEventListener('click', () => runClean(btn.dataset.action))
+)
+document.getElementById('drop-column').addEventListener('click', () =>
+  runClean('drop_column', document.getElementById('col-select').value)
+)
+
+
+// --- Visualize ---
+
+const chartArea = document.getElementById('chart-area')
+const chartTip = document.getElementById('chart-tip')
+let chart = null
+
+const chartTips = {
+  histogram: 'Histograms show how one numeric column is spread across 10 equal-width bins.',
+  bar: 'Bars show the row count per X value, or the mean of Y per X value (top 20).',
+  scatter: 'Scatter plots show the relationship between two numeric columns.',
+  correlation: 'Pearson correlation between numeric columns: blue is positive, red is negative.',
+}
+
+function showChartMessage(text) {
+  chartArea.innerHTML = `<p class="text-gray-400">${escapeHtml(text)}</p>`
+}
+
+function histogram(values, bins = 10) {
+  const min = Math.min(...values), max = Math.max(...values)
+  const width = (max - min) / bins || 1
+  const counts = Array(bins).fill(0)
+  values.forEach(v => counts[Math.min(bins - 1, Math.floor((v - min) / width))]++)
+  const labels = counts.map((_, i) => `${+(min + i * width).toFixed(2)} to ${+(min + (i + 1) * width).toFixed(2)}`)
+  return { labels, counts }
+}
+
+function barData(x, y) {
+  const groups = new Map()
+  dataset.data.forEach(r => {
+    const key = String(r[x] ?? '(missing)')
+    if (!groups.has(key)) groups.set(key, [])
+    if (y === '(count)' || r[y] !== null) groups.get(key).push(r[y])
+  })
+  const mean = vals => vals.reduce((a, b) => a + b, 0) / (vals.length || 1)
+  // ponytail: top 20 groups only; more bars than that is unreadable anyway
+  const rows = [...groups].map(([k, vals]) => [k, y === '(count)' ? vals.length : mean(vals)])
+    .sort((a, b) => b[1] - a[1]).slice(0, 20)
+  return { labels: rows.map(r => r[0]), values: rows.map(r => r[1]) }
+}
+
+function correlationTable() {
+  const { columns, matrix } = dataset.correlation
+  if (columns.length < 2) return showChartMessage('Need at least 2 numeric columns for a correlation heatmap.')
+  const color = v => v === null ? '#f3f4f6'
+    : `rgba(${v >= 0 ? '37, 99, 235' : '220, 38, 38'}, ${Math.abs(v)})`
+  const head = columns.map(c => `<th class="px-3 py-2 font-semibold">${escapeHtml(c)}</th>`).join('')
+  const body = matrix.map((row, i) => `<tr><th class="px-3 py-2 text-left font-semibold">${escapeHtml(columns[i])}</th>${
+    row.map(v => `<td class="px-3 py-2 text-center ${Math.abs(v) > 0.5 ? 'text-white' : ''}" style="background:${color(v)}">${v === null ? '—' : v.toFixed(2)}</td>`).join('')
+  }</tr>`).join('')
+  chartArea.innerHTML = `<table class="text-sm m-auto"><thead><tr><th></th>${head}</tr></thead><tbody>${body}</tbody></table>`
+}
+
+function drawChart() {
+  if (chart) { chart.destroy(); chart = null }
+  if (!dataset) return showChartMessage('Load a dataset first.')
+
+  const type = document.getElementById('chart-type').value
+  const x = document.getElementById('col-x').value
+  const y = document.getElementById('col-y').value
+  const numeric = numericColumns()
+  chartTip.textContent = chartTips[type]
+
+  if (type === 'correlation') return correlationTable()
+
+  let config
+  if (type === 'histogram') {
+    if (!numeric.includes(x)) return showChartMessage('Pick a numeric X column for a histogram.')
+    const values = dataset.data.map(r => r[x]).filter(v => v !== null)
+    if (!values.length) return showChartMessage(`'${x}' has no values.`)
+    const h = histogram(values)
+    config = { type: 'bar', data: { labels: h.labels, datasets: [{ label: x, data: h.counts, backgroundColor: '#2563eb', barPercentage: 1, categoryPercentage: 1 }] } }
+  } else if (type === 'bar') {
+    const b = barData(x, y)
+    config = { type: 'bar', data: { labels: b.labels, datasets: [{ label: y === '(count)' ? 'count' : `mean ${y}`, data: b.values, backgroundColor: '#2563eb' }] } }
+  } else {
+    if (!numeric.includes(x) || !numeric.includes(y)) return showChartMessage('Pick numeric X and Y columns for a scatter plot.')
+    const points = dataset.data.filter(r => r[x] !== null && r[y] !== null).map(r => ({ x: r[x], y: r[y] }))
+    config = {
+      type: 'scatter',
+      data: { datasets: [{ label: `${y} vs ${x}`, data: points, backgroundColor: '#2563eb' }] },
+      options: { scales: { x: { title: { display: true, text: x } }, y: { title: { display: true, text: y } } } },
+    }
+  }
+
+  chartArea.innerHTML = '<canvas></canvas>'
+  config.options = { maintainAspectRatio: false, ...config.options }
+  chart = new Chart(chartArea.querySelector('canvas'), config)
+}
+
+document.getElementById('draw-chart').addEventListener('click', drawChart)

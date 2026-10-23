@@ -31,7 +31,7 @@
             <div class="bg-blue-50 border-b border-gray-200 px-6 py-4 flex items-center justify-between">
                 <h1 class="text-xl font-semibold">Upload Dataset</h1>
                 <div class="flex gap-3">
-                <button class="px-4 py-2 border border-gray-300 rounded-lg text-sm bg-white hover:bg-gray-50">Export CSV</button>
+                <button id="export-csv" class="px-4 py-2 border border-gray-300 rounded-lg text-sm bg-white hover:bg-gray-50">Export CSV</button>
                 <button id="run-analysis" class="px-4 py-2 bg-black text-white rounded-lg text-sm hover:opacity-90">Run Analysis</button>
                 </div>
             </div>
@@ -120,23 +120,23 @@
                 <!-- Action buttons -->
                 <h3 class="text-xs text-gray-400 uppercase mb-4">Actions</h3>
                 <div class="grid grid-cols-3 gap-4 mb-8">
-                <button class="bg-white border border-gray-200 rounded-xl p-5 text-left hover:border-blue-500 transition-colors">
+                <button data-action="drop_missing" class="bg-white border border-gray-200 rounded-xl p-5 text-left hover:border-blue-500 transition-colors">
                     <p class="font-semibold mb-1">Drop missing rows</p>
                     <p class="text-sm text-gray-400">Remove any row with a null value</p>
                 </button>
-                <button class="bg-white border border-gray-200 rounded-xl p-5 text-left hover:border-blue-500 transition-colors">
+                <button data-action="fill_mean" class="bg-white border border-gray-200 rounded-xl p-5 text-left hover:border-blue-500 transition-colors">
                     <p class="font-semibold mb-1">Fill with mean</p>
-                    <p class="text-sm text-gray-400">Replace nulls with the column mean</p>
+                    <p class="text-sm text-gray-400">Replace numeric nulls with the column mean</p>
                 </button>
-                <button class="bg-white border border-gray-200 rounded-xl p-5 text-left hover:border-blue-500 transition-colors">
+                <button data-action="fill_median" class="bg-white border border-gray-200 rounded-xl p-5 text-left hover:border-blue-500 transition-colors">
                     <p class="font-semibold mb-1">Fill with median</p>
                     <p class="text-sm text-gray-400">More robust than mean imputation</p>
                 </button>
-                <button class="bg-white border border-gray-200 rounded-xl p-5 text-left hover:border-blue-500 transition-colors">
+                <button data-action="fill_zero" class="bg-white border border-gray-200 rounded-xl p-5 text-left hover:border-blue-500 transition-colors">
                     <p class="font-semibold mb-1">Fill with zero</p>
-                    <p class="text-sm text-gray-400">Replace nulls with 0</p>
+                    <p class="text-sm text-gray-400">Replace numeric nulls with 0</p>
                 </button>
-                <button class="bg-white border border-gray-200 rounded-xl p-5 text-left hover:border-blue-500 transition-colors">
+                <button data-action="dedupe" class="bg-white border border-gray-200 rounded-xl p-5 text-left hover:border-blue-500 transition-colors">
                     <p class="font-semibold mb-1">Remove duplicates</p>
                     <p class="text-sm text-gray-400">Drop identical rows</p>
                 </button>
@@ -148,7 +148,7 @@
                 <select id="col-select" class="border border-gray-200 rounded-lg px-4 py-2 text-sm">
                     <option>No dataset loaded</option>
                 </select>
-                <button class="bg-red-50 border border-red-300 text-red-600 px-4 py-2 rounded-lg text-sm">Drop column</button>
+                <button id="drop-column" class="bg-red-50 border border-red-300 text-red-600 px-4 py-2 rounded-lg text-sm">Drop column</button>
                 </div>
 
                 <!-- Action log -->
@@ -186,11 +186,11 @@
                     <option>No dataset loaded</option>
                     </select>
                 </div>
-                <button class="bg-black text-white px-6 py-2 rounded-lg text-sm">Draw chart</button>
+                <button id="draw-chart" class="bg-black text-white px-6 py-2 rounded-lg text-sm">Draw chart</button>
                 </div>
 
                 <!-- Chart area -->
-                <div class="bg-white border border-gray-200 rounded-xl p-8 flex items-center justify-center" style="height: 400px;">
+                <div id="chart-area" class="bg-white border border-gray-200 rounded-xl p-8 flex items-center justify-center overflow-auto" style="height: 400px;">
                 <p class="text-gray-400">Chart will appear here after you load data and click Draw</p>
                 </div>
 
@@ -199,6 +199,7 @@
 
             </div>
         </section>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="/static/js/app.js"></script>
     </body>
 </html>
