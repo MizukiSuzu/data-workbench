@@ -74,14 +74,41 @@ function renderSummary(data) {
   fillColumnSelects()
 }
 
+// --- API calls with a busy indicator ---
+
+const busyToast = document.getElementById('busy')
+const busyText = document.getElementById('busy-text')
+let busy = false
+
+// One request at a time: a second click while busy is ignored, which also
+// stops two cleans (or a clean and an undo) racing on the same dataset.
+async function postForm(url, form, label) {
+  busy = true
+  busyText.textContent = label
+  busyToast.classList.remove('hidden')
+  document.body.classList.add('cursor-progress')
+  // The first request after the site idles waits for the Python server to start
+  const slow = setTimeout(() => { busyText.textContent = `${label} Waking up the server, this can take a few seconds.` }, 1500)
+  try {
+    const res = await fetch(url, { method: 'POST', body: form })
+    const data = await res.json().catch(() => ({ error: `Server error (${res.status}). Please try again.` }))
+    if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`)
+    return data
+  } finally {
+    clearTimeout(slow)
+    busy = false
+    busyToast.classList.add('hidden')
+    document.body.classList.remove('cursor-progress')
+  }
+}
+
 async function uploadFile(file) {
+  if (busy) return
   currentSource.textContent = `Loading ${file.name}…`
   const form = new FormData()
   form.append('file', file)
   try {
-    const res = await fetch('/api/summary', { method: 'POST', body: form })
-    const data = await res.json()
-    if (!res.ok) throw new Error(data.error || `Upload failed (${res.status})`)
+    const data = await postForm('/api/summary', form, `Analyzing ${file.name}…`)
     currentSource.textContent = file.name
     fileName = file.name.replace(/\.json$/i, '.csv')
     document.getElementById('clean-log').innerHTML = ''
@@ -104,6 +131,7 @@ document.getElementById('run-analysis').addEventListener('click', () => showTab(
 
 document.getElementById('load-sample').addEventListener('click', async e => {
   e.stopPropagation()  // the button sits inside the drop zone, which opens the file picker
+  if (busy) return
   const res = await fetch('/static/sample/coffee_sales.csv')
   uploadFile(new File([await res.blob()], 'coffee_sales.csv', { type: 'text/csv' }))
 })
@@ -162,6 +190,7 @@ function logClean(text, isError) {
 }
 
 async function runClean(action, column, value) {
+  if (busy) return
   if (!dataset) return logClean('Load a dataset first.', true)
   // Vercel functions keep no state, so the current data goes back up as CSV
   const form = new FormData()
@@ -171,9 +200,7 @@ async function runClean(action, column, value) {
   if (column) form.append('column', column)
   if (value) form.append('value', value)
   try {
-    const res = await fetch('/api/clean', { method: 'POST', body: form })
-    const data = await res.json()
-    if (!res.ok) throw new Error(data.error || `Clean failed (${res.status})`)
+    const data = await postForm('/api/clean', form, 'Cleaning…')
     // ponytail: unbounded undo history; cap it if people clean big files many times
     undoStack.push({ dataset, message: data.message })
     undoButton.disabled = false
@@ -196,6 +223,7 @@ document.querySelectorAll('[data-column-action]').forEach(btn =>
 )
 
 undoButton.addEventListener('click', () => {
+  if (busy) return
   const last = undoStack.pop()
   if (!last) return
   renderSummary(last.dataset)

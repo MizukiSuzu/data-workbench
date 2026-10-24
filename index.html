@@ -224,6 +224,12 @@
 
             </div>
         </section>
+        <!-- Busy indicator, shown while an API request runs -->
+        <div id="busy" role="status" aria-live="polite" class="hidden fixed bottom-4 left-4 right-4 md:left-auto md:max-w-sm z-20 bg-gray-900 text-white rounded-xl shadow-lg px-4 py-3 flex items-center gap-3 text-sm">
+            <span class="w-4 h-4 shrink-0 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+            <span id="busy-text">Working…</span>
+        </div>
+
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="/static/js/app.js"></script>
     </body>
