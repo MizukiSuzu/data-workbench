@@ -21,11 +21,24 @@ def clean(value):
     """Make a pandas/numpy scalar JSON-safe (NaN/inf become null)."""
     if value is None or pd.isna(value):
         return None
+    if isinstance(value, pd.Timestamp):
+        return value.isoformat()
     if hasattr(value, "item"):
         value = value.item()
     if isinstance(value, float):
         return None if math.isinf(value) else round(value, 4)
     return value
+
+
+def outlier_mask(series):
+    """True where a value is outside 1.5 IQR of the quartiles (Tukey's rule)."""
+    q1, q3 = series.quantile(0.25), series.quantile(0.75)
+    iqr = q3 - q1
+    return (series < q1 - 1.5 * iqr) | (series > q3 + 1.5 * iqr)
+
+
+def is_number(series):
+    return pd.api.types.is_numeric_dtype(series) and not pd.api.types.is_bool_dtype(series)
 
 
 def column_stats(series):
@@ -35,9 +48,10 @@ def column_stats(series):
         "missing": int(series.isna().sum()),
         "unique": int(series.nunique()),
     }
-    if pd.api.types.is_numeric_dtype(series) and not pd.api.types.is_bool_dtype(series):
+    if is_number(series):
         for key in ("mean", "std", "min", "median", "max"):
             stats[key] = clean(getattr(series, key)())
+        stats["outliers"] = int(outlier_mask(series).sum())
     else:
         top = series.mode()
         stats["top"] = clean(top.iloc[0]) if len(top) else None
@@ -64,9 +78,10 @@ def summarize(df):
     }
 
 
-def apply_action(df, action, column=None):
+def apply_action(df, action, column=None, value=None):
     """Run one cleaning action; return (new_df, log message)."""
-    numeric = df.select_dtypes("number").columns
+    numeric = [c for c in df.columns if is_number(df[c])]
+    text = [c for c in df.columns if pd.api.types.is_string_dtype(df[c])]
     missing = int(df[numeric].isna().sum().sum())
     if action == "drop_missing":
         out = df.dropna()
@@ -78,13 +93,50 @@ def apply_action(df, action, column=None):
         else:
             out[numeric] = out[numeric].fillna(getattr(out[numeric], action[5:])())
         return out, f"Filled {missing} missing numeric cells with {action[5:]}"
+    if action == "fill_mode":
+        out = df.copy()
+        filled = 0
+        for c in text:
+            top = out[c].mode()
+            if len(top):
+                filled += int(out[c].isna().sum())
+                out[c] = out[c].fillna(top.iloc[0])
+        return out, f"Filled {filled} missing text cells with the most common value"
+    if action == "trim":
+        out = df.copy()
+        changed = 0
+        for c in text:
+            out[c] = out[c].str.strip()
+            changed += int(((out[c] != df[c]) & df[c].notna()).sum())
+        return out, f"Trimmed whitespace in {changed} text cells"
+    if action == "remove_outliers":
+        mask = pd.Series(False, index=df.index)
+        for c in numeric:
+            mask |= outlier_mask(df[c])
+        return df[~mask], f"Removed {int(mask.sum())} rows with outliers (1.5 IQR rule)"
     if action == "dedupe":
         out = df.drop_duplicates()
         return out, f"Removed {len(df) - len(out)} duplicate rows"
+    if action in ("drop_column", "to_number", "to_date", "rename") and column not in df.columns:
+        raise ValueError(f"Unknown column: {column}")
     if action == "drop_column":
-        if column not in df.columns:
-            raise ValueError(f"Unknown column: {column}")
         return df.drop(columns=[column]), f"Dropped column '{column}'"
+    if action in ("to_number", "to_date"):
+        out = df.copy()
+        if action == "to_number":
+            out[column] = pd.to_numeric(df[column], errors="coerce")
+        else:
+            out[column] = pd.to_datetime(df[column], errors="coerce", format="mixed")
+        lost = int(out[column].isna().sum() - df[column].isna().sum())
+        kind = "number" if action == "to_number" else "date"
+        return out, f"Converted '{column}' to {kind} ({lost} values could not be read and became empty)"
+    if action == "rename":
+        value = (value or "").strip()
+        if not value:
+            raise ValueError("New column name is empty")
+        if value in df.columns:
+            raise ValueError(f"Column '{value}' already exists")
+        return df.rename(columns={column: value}), f"Renamed column '{column}' to '{value}'"
     raise ValueError(f"Unknown action: {action}")
 
 
@@ -112,7 +164,12 @@ def clean_data():
         return jsonify(error="No file uploaded"), 400
     try:
         df = read_upload(file)
-        df, message = apply_action(df, request.form.get("action"), request.form.get("column"))
+        # CSV loses dtypes, so the client says which columns are dates
+        for c in json.loads(request.form.get("dates") or "[]"):
+            if c in df.columns:
+                df[c] = pd.to_datetime(df[c], errors="coerce", format="ISO8601")
+        form = request.form
+        df, message = apply_action(df, form.get("action"), form.get("column"), form.get("value"))
     except Exception as e:
         return jsonify(error=str(e)), 400
     return jsonify({**summarize(df), "message": message})

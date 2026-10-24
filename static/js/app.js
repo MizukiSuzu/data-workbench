@@ -68,7 +68,7 @@ function renderSummary(data) {
   previewTable.className = 'overflow-x-auto'
   previewTable.innerHTML = renderTable(cols, data.data.slice(0, 10).map(r => cols.map(c => r[c])))
 
-  const keys = ['dtype', 'missing', 'unique', 'mean', 'std', 'min', 'median', 'max', 'top']
+  const keys = ['dtype', 'missing', 'unique', 'mean', 'std', 'min', 'median', 'max', 'outliers', 'top']
   statsTable.className = 'bg-white border border-gray-200 rounded-xl overflow-x-auto'
   statsTable.innerHTML = renderTable(['column', ...keys], data.stats.map(s => [s.name, ...keys.map(k => s[k])]))
   fillColumnSelects()
@@ -85,6 +85,8 @@ async function uploadFile(file) {
     currentSource.textContent = file.name
     fileName = file.name.replace(/\.json$/i, '.csv')
     document.getElementById('clean-log').innerHTML = ''
+    undoStack.length = 0
+    undoButton.disabled = true
     renderSummary(data)
   } catch (err) {
     currentSource.textContent = err.message
@@ -99,6 +101,12 @@ dropZone.addEventListener('drop', e => {
   if (e.dataTransfer.files[0]) uploadFile(e.dataTransfer.files[0])
 })
 document.getElementById('run-analysis').addEventListener('click', () => showTab('tab-summary'))
+
+document.getElementById('load-sample').addEventListener('click', async e => {
+  e.stopPropagation()  // the button sits inside the drop zone, which opens the file picker
+  const res = await fetch('/static/sample/coffee_sales.csv')
+  uploadFile(new File([await res.blob()], 'coffee_sales.csv', { type: 'text/csv' }))
+})
 
 
 // --- Column selects ---
@@ -145,23 +153,30 @@ document.getElementById('export-csv').addEventListener('click', () => {
 // --- Clean ---
 
 const cleanLog = document.getElementById('clean-log')
+const undoButton = document.getElementById('undo-clean')
+const undoStack = []  // earlier datasets and the action that replaced each, newest last
 
 function logClean(text, isError) {
   const color = isError ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-700'
   cleanLog.insertAdjacentHTML('afterbegin', `<p class="${color} rounded-lg px-4 py-2 text-sm">${escapeHtml(text)}</p>`)
 }
 
-async function runClean(action, column) {
+async function runClean(action, column, value) {
   if (!dataset) return logClean('Load a dataset first.', true)
   // Vercel functions keep no state, so the current data goes back up as CSV
   const form = new FormData()
   form.append('file', new Blob([toCsv()], { type: 'text/csv' }), 'data.csv')
   form.append('action', action)
+  form.append('dates', JSON.stringify(dataset.stats.filter(s => s.dtype.startsWith('datetime')).map(s => s.name)))
   if (column) form.append('column', column)
+  if (value) form.append('value', value)
   try {
     const res = await fetch('/api/clean', { method: 'POST', body: form })
     const data = await res.json()
     if (!res.ok) throw new Error(data.error || `Clean failed (${res.status})`)
+    // ponytail: unbounded undo history; cap it if people clean big files many times
+    undoStack.push({ dataset, message: data.message })
+    undoButton.disabled = false
     renderSummary(data)
     logClean(`${data.message} (now ${data.rows} rows, ${data.columns} columns)`)
   } catch (err) {
@@ -172,9 +187,21 @@ async function runClean(action, column) {
 document.querySelectorAll('[data-action]').forEach(btn =>
   btn.addEventListener('click', () => runClean(btn.dataset.action))
 )
-document.getElementById('drop-column').addEventListener('click', () =>
-  runClean('drop_column', document.getElementById('col-select').value)
+document.querySelectorAll('[data-column-action]').forEach(btn =>
+  btn.addEventListener('click', () => {
+    const renameInput = document.getElementById('rename-input')
+    runClean(btn.dataset.columnAction, document.getElementById('col-select').value, renameInput.value)
+    if (btn.dataset.columnAction === 'rename') renameInput.value = ''
+  })
 )
+
+undoButton.addEventListener('click', () => {
+  const last = undoStack.pop()
+  if (!last) return
+  renderSummary(last.dataset)
+  undoButton.disabled = undoStack.length === 0
+  logClean(`Undid: ${last.message}`)
+})
 
 
 // --- Visualize ---
@@ -188,6 +215,7 @@ const chartTips = {
   bar: 'Bars show the row count per X value, or the mean of Y per X value (top 20).',
   scatter: 'Scatter plots show the relationship between two numeric columns.',
   correlation: 'Pearson correlation between numeric columns: blue is positive, red is negative.',
+  missing: 'Empty cells per column. Use the Clean tab to fill or drop them.',
 }
 
 function showChartMessage(text) {
@@ -242,7 +270,10 @@ function drawChart() {
   if (type === 'correlation') return correlationTable()
 
   let config
-  if (type === 'histogram') {
+  if (type === 'missing') {
+    if (!dataset.missing) return showChartMessage('No missing values. Nothing to plot.')
+    config = { type: 'bar', data: { labels: dataset.column_names, datasets: [{ label: 'missing cells', data: dataset.stats.map(s => s.missing), backgroundColor: '#dc2626' }] } }
+  } else if (type === 'histogram') {
     if (!numeric.includes(x)) return showChartMessage('Pick a numeric X column for a histogram.')
     const values = dataset.data.map(r => r[x]).filter(v => v !== null)
     if (!values.length) return showChartMessage(`'${x}' has no values.`)
