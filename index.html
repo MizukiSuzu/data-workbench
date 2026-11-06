@@ -14,16 +14,18 @@
 
     <body>
 
-        <nav class="bg-white border-b border-gray-200 px-4 md:px-6 py-3 md:py-0 md:h-16 flex items-center sticky top-0 z-10">
+        <nav class="bg-white border-b border-gray-200 px-4 md:px-6 py-3 md:py-0 md:h-16 flex items-start md:items-center justify-between gap-3 sticky top-0 z-10">
             <div class="flex flex-wrap items-center gap-x-8 gap-y-2">
                 <span class="text-lg font-bold">Data Workbench</span>
                 <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
                     <a href="#" data-tab="tab-upload" class="text-sm pb-1">Load Data</a>
                     <a href="#" data-tab="tab-summary" class="text-sm pb-1">Summary Stats</a>
                     <a href="#" data-tab="tab-clean" class="text-sm pb-1">Clean Data</a>
+                    <a href="#" data-tab="tab-rank" class="text-sm pb-1">Rank Columns</a>
                     <a href="#" data-tab="tab-visualize" class="text-sm pb-1">Visualize</a>
                 </div>
             </div>
+            <button id="guide-open" class="shrink-0 px-3 py-1.5 border border-gray-300 rounded-lg text-sm bg-white hover:bg-gray-50">Guide</button>
         </nav>
 
         <section id="tab-upload">
@@ -31,7 +33,8 @@
             <div class="bg-blue-50 border-b border-gray-200 px-4 md:px-6 py-4 flex flex-wrap gap-3 items-center justify-between">
                 <h1 class="text-xl font-semibold">Upload Dataset</h1>
                 <div class="flex gap-3">
-                <button id="export-csv" class="px-4 py-2 border border-gray-300 rounded-lg text-sm bg-white hover:bg-gray-50">Export CSV</button>
+                <button data-export="csv" class="px-4 py-2 border border-gray-300 rounded-lg text-sm bg-white hover:bg-gray-50">Export CSV</button>
+                <button data-export="xlsx" class="px-4 py-2 border border-gray-300 rounded-lg text-sm bg-white hover:bg-gray-50">Export Excel</button>
                 <button id="run-analysis" class="px-4 py-2 bg-black text-white rounded-lg text-sm hover:opacity-90">Run Analysis</button>
                 </div>
             </div>
@@ -44,16 +47,19 @@
                     <span class="text-2xl">↑</span>
                 </div>
                 <h2 class="text-lg font-semibold mb-2">Drag & Drop Dataset</h2>
-                <p class="text-gray-400 text-sm mb-4">Support for .csv and .json files</p>
-                <div class="flex gap-2 mb-6">
+                <p class="text-gray-400 text-sm mb-4">Tables from any of these files. Word and PDF use the largest table.</p>
+                <div class="flex flex-wrap justify-center gap-2 mb-6">
                     <span class="px-2 py-1 bg-gray-100 text-xs font-bold rounded">CSV</span>
                     <span class="px-2 py-1 bg-gray-100 text-xs font-bold rounded">JSON</span>
+                    <span class="px-2 py-1 bg-gray-100 text-xs font-bold rounded">XLSX</span>
+                    <span class="px-2 py-1 bg-gray-100 text-xs font-bold rounded">DOCX</span>
+                    <span class="px-2 py-1 bg-gray-100 text-xs font-bold rounded">PDF</span>
                 </div>
                 <div class="flex flex-wrap justify-center gap-3">
                     <button type="button" class="px-6 py-2 bg-black text-white rounded-lg text-sm">Choose File</button>
                     <button type="button" id="load-sample" class="px-6 py-2 border border-gray-300 bg-white rounded-lg text-sm hover:bg-gray-50">Try sample data</button>
                 </div>
-                <input type="file" id="file-input" accept=".csv,.json" class="hidden">
+                <input type="file" id="file-input" accept=".csv,.json,.xlsx,.docx,.pdf" class="hidden">
                 </div>
 
                 <!-- Info cards (1 col) -->
@@ -64,12 +70,12 @@
                 </div>
                 <div class="bg-gray-900 text-white rounded-xl p-4">
                     <p class="text-xs text-gray-400 uppercase mb-2">Data Tip</p>
-                    <p class="text-sm text-gray-300">Ensure your headers are in the first row for automatic column detection. No file handy? "Try sample data" loads 244 made-up coffee shop orders with gaps, duplicates and outliers to clean.</p>
+                    <p class="text-sm text-gray-300">Put headers in the first row. Scans and images are not supported. Whatever you load, you can export it as clean CSV or Excel. No file handy? "Try sample data" loads 244 made-up coffee shop orders with gaps, duplicates and outliers to clean.</p>
                 </div>
                 </div>
 
                 <!-- Preview table (full width) -->
-                <div class="md:col-span-3">
+                <div id="preview-card" class="md:col-span-3">
                 <h2 class="text-lg font-semibold mb-1">Data Preview</h2>
                 <p class="text-sm text-gray-400 mb-4">First 10 rows of your dataset</p>
                 <div class="bg-white border border-gray-200 rounded-xl overflow-hidden">
@@ -89,7 +95,7 @@
                 <p class="text-gray-500 mb-8">Key statistics for every column in your dataset. Outliers are values more than 1.5 IQR outside the quartiles.</p>
 
                 <!-- Overview Cards -->
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                <div id="stats-cards" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
                     <div class="bg-white border border-gray-200 rounded-xl p-5">
                         <p class="text-xs text-gray-500 uppercase mb-1">Rows</p>
                         <p class="text-3xl font-light" id="stats-row">0</p>
@@ -111,6 +117,21 @@
                 <div id="stats-table" class="bg-white border border-gray-200 rounded-xl overflow-x-auto p-8 text-center text-gray-400">
                     Load a dataset first to see column statistics.
                 </div>
+
+                <details class="mt-6 bg-white border border-gray-200 rounded-xl p-5 text-sm text-gray-600">
+                    <summary class="font-semibold text-gray-900 cursor-pointer">What do these columns mean?</summary>
+                    <dl class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3">
+                        <div><dt class="font-semibold text-gray-900">dtype</dt><dd>The kind of data: float or int are numbers, str is text, datetime is dates.</dd></div>
+                        <div><dt class="font-semibold text-gray-900">missing</dt><dd>How many cells are empty.</dd></div>
+                        <div><dt class="font-semibold text-gray-900">unique</dt><dd>How many different values appear.</dd></div>
+                        <div><dt class="font-semibold text-gray-900">mean</dt><dd>The average. Extreme values can pull it a long way.</dd></div>
+                        <div><dt class="font-semibold text-gray-900">median</dt><dd>The middle value when sorted. Extreme values barely move it.</dd></div>
+                        <div><dt class="font-semibold text-gray-900">std</dt><dd>Standard deviation: how far values typically sit from the mean.</dd></div>
+                        <div><dt class="font-semibold text-gray-900">min and max</dt><dd>The smallest and largest values.</dd></div>
+                        <div><dt class="font-semibold text-gray-900">outliers</dt><dd>Values unusually far from the middle 50% of the column (the 1.5 IQR rule). They can be errors or real events, so check before removing them.</dd></div>
+                        <div><dt class="font-semibold text-gray-900">top</dt><dd>The most common value in a text column.</dd></div>
+                    </dl>
+                </details>
             </div>
         </section>
 
@@ -121,6 +142,12 @@
                 <div class="flex flex-wrap items-start justify-between gap-3 mb-8">
                     <p class="text-gray-500">Fix missing values, outliers and messy columns. Every action can be undone.</p>
                     <button id="undo-clean" disabled class="px-4 py-2 border border-gray-300 bg-white rounded-lg text-sm hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">Undo last action</button>
+                </div>
+
+                <!-- Suggestions from the loaded data -->
+                <div id="clean-suggestions" class="bg-white border border-gray-200 rounded-xl p-5 mb-8">
+                    <h3 class="text-xs text-gray-400 uppercase mb-2">Suggested for this data</h3>
+                    <div id="suggestion-list" class="text-sm text-gray-400">Load a dataset to get suggestions.</div>
                 </div>
 
                 <!-- Action buttons -->
@@ -176,10 +203,51 @@
                 </div>
 
                 <!-- Action log -->
-                <div id="clean-log" class="flex flex-col gap-2"></div>
+                <div id="clean-log" class="flex flex-col gap-2 mb-8"></div>
+
+                <!-- Export -->
+                <h3 class="text-xs text-gray-400 uppercase mb-4">Finished? Download your cleaned data</h3>
+                <div id="clean-export" class="flex flex-wrap gap-3 w-fit">
+                <button data-export="csv" class="px-4 py-2 border border-gray-300 rounded-lg text-sm bg-white hover:bg-gray-50">Export CSV</button>
+                <button data-export="xlsx" class="px-4 py-2 border border-gray-300 rounded-lg text-sm bg-white hover:bg-gray-50">Export Excel</button>
+                </div>
 
             </div>
             </section>
+
+        <section id="tab-rank" class="hidden">
+            <div class="max-w-7xl mx-auto px-4 md:px-6 py-8">
+
+                <h1 class="text-2xl font-bold mb-2">Rank Columns</h1>
+                <p class="text-gray-500 mb-8">Pick the column you care about, and see which other columns are most closely related to it.</p>
+
+                <div id="rank-controls" class="bg-white border border-gray-200 rounded-xl p-4 md:p-6 flex flex-wrap gap-4 md:gap-6 items-end mb-8">
+                    <div class="flex flex-col gap-2">
+                        <label for="rank-target" class="text-xs text-gray-400 uppercase">Your goal column</label>
+                        <select id="rank-target" class="border border-gray-200 rounded-lg px-4 py-2 text-sm">
+                            <option>No dataset loaded</option>
+                        </select>
+                    </div>
+                    <button id="rank-run" class="bg-black text-white px-6 py-2 rounded-lg text-sm">Rank columns</button>
+                </div>
+
+                <div id="rank-results" class="bg-white border border-gray-200 rounded-xl p-4 md:p-6 text-gray-400 text-sm mb-6">
+                    Your ranking will appear here.
+                </div>
+
+                <details class="bg-white border border-gray-200 rounded-xl p-5 text-sm text-gray-600">
+                    <summary class="font-semibold text-gray-900 cursor-pointer">How is the score worked out?</summary>
+                    <p class="mt-4">Scores run from 0 (no relationship) to 1 (very strong). The method depends on the two columns:</p>
+                    <dl class="mt-3 flex flex-col gap-3">
+                        <div><dt class="font-semibold text-gray-900">Correlation</dt><dd>Two number or date columns: do they rise and fall together in a straight line?</dd></div>
+                        <div><dt class="font-semibold text-gray-900">Group differences</dt><dd>A number and a text column: do the groups have clearly different averages? (Correlation ratio.)</dd></div>
+                        <div><dt class="font-semibold text-gray-900">Category match</dt><dd>Two text columns: do certain values tend to appear together? (Cramér's V.)</dd></div>
+                        <div><dt class="font-semibold text-gray-900">Data quality</dt><dd>With no goal, each column is scored on how complete and how varied it is. That shows what is usable, not what matters.</dd></div>
+                    </dl>
+                    <p class="mt-3">Related does not mean one column causes the other.</p>
+                </details>
+            </div>
+        </section>
 
         <section id="tab-visualize" class="hidden">
             <div class="max-w-7xl mx-auto px-4 md:px-6 py-8">
@@ -188,7 +256,7 @@
                 <p class="text-gray-500 mb-8">Plot your data to find patterns and relationships.</p>
 
                 <!-- Controls -->
-                <div class="bg-white border border-gray-200 rounded-xl p-4 md:p-6 flex flex-wrap gap-4 md:gap-6 items-end mb-8">
+                <div id="viz-controls" class="bg-white border border-gray-200 rounded-xl p-4 md:p-6 flex flex-wrap gap-4 md:gap-6 items-end mb-8">
                 <div class="flex flex-col gap-2">
                     <label class="text-xs text-gray-400 uppercase">Chart type</label>
                     <select id="chart-type" class="border border-gray-200 rounded-lg px-4 py-2 text-sm">
@@ -225,9 +293,36 @@
             </div>
         </section>
         <!-- Busy indicator, shown while an API request runs -->
-        <div id="busy" role="status" aria-live="polite" class="hidden fixed bottom-4 left-4 right-4 md:left-auto md:max-w-sm z-20 bg-gray-900 text-white rounded-xl shadow-lg px-4 py-3 flex items-center gap-3 text-sm">
+        <div id="busy" role="status" aria-live="polite" class="hidden fixed bottom-4 left-4 right-4 md:left-auto md:max-w-sm z-[60] bg-gray-900 text-white rounded-xl shadow-lg px-4 py-3 flex items-center gap-3 text-sm">
             <span class="w-4 h-4 shrink-0 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
             <span id="busy-text">Working…</span>
+        </div>
+
+        <!-- First-visit offer of the guide -->
+        <div id="guide-prompt" class="hidden fixed bottom-4 left-4 right-4 md:right-auto md:w-96 z-50 bg-white border border-gray-200 rounded-xl shadow-lg p-5">
+            <p class="font-semibold mb-1">New to data analysis?</p>
+            <p class="text-sm text-gray-500 mb-4">Take a short guided tour using sample data. You try each step yourself.</p>
+            <div class="flex gap-3">
+                <button id="guide-prompt-start" class="px-4 py-2 bg-black text-white rounded-lg text-sm">Start the guide</button>
+                <button id="guide-prompt-dismiss" class="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">No thanks</button>
+            </div>
+        </div>
+
+        <!-- Guide step card -->
+        <div id="guide-card" role="dialog" aria-label="Guide" class="hidden fixed bottom-4 left-4 right-4 md:right-auto md:w-96 z-50 bg-white rounded-xl shadow-2xl p-5">
+            <div class="flex items-center justify-between mb-2">
+                <p id="guide-progress" class="text-xs text-gray-400 uppercase"></p>
+                <button id="guide-close" class="text-sm text-gray-500 hover:text-gray-900">Close</button>
+            </div>
+            <div aria-live="polite">
+                <p id="guide-title" class="font-semibold mb-1"></p>
+                <p id="guide-text" class="text-sm text-gray-600 mb-4"></p>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+                <button id="guide-back" class="px-3 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">Back</button>
+                <button id="guide-do" class="px-3 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">Do it for me</button>
+                <button id="guide-next" class="px-4 py-2 bg-black text-white rounded-lg text-sm ml-auto disabled:opacity-40 disabled:cursor-not-allowed">Next</button>
+            </div>
         </div>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>

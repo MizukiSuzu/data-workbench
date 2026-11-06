@@ -1,6 +1,11 @@
 import io
 
-from app import app
+import numpy as np
+import pandas as pd
+from docx import Document
+from openpyxl import load_workbook
+
+from app import app, cramers_v, join_page_tables, table_to_df, usable
 
 
 def post(name, body, url="/api/summary", **form):
@@ -73,9 +78,103 @@ def test_json_and_errors():
     assert app.test_client().get("/").status_code == 200
 
 
+def test_documents():
+    frame = pd.DataFrame({"item": ["a", "b"], "qty": [1, 2]})
+    xlsx = io.BytesIO()
+    with pd.ExcelWriter(xlsx) as writer:
+        pd.DataFrame().to_excel(writer, sheet_name="Empty")
+        frame.to_excel(writer, sheet_name="Sales", index=False)
+    data = post("d.xlsx", xlsx.getvalue()).get_json()
+    assert data["data"][1]["qty"] == 2 and data["note"] == "Read sheet 'Sales'"
+
+    doc = Document()
+    small = doc.add_table(rows=2, cols=2)
+    small.cell(0, 0).text, small.cell(0, 1).text = "x", "y"
+    big = doc.add_table(rows=3, cols=2)
+    for r, row in enumerate([("item", "price"), ("a", "1,200"), ("b", "3")]):
+        for c, text in enumerate(row):
+            big.cell(r, c).text = text
+    docx = io.BytesIO()
+    doc.save(docx)
+    data = post("d.docx", docx.getvalue()).get_json()
+    assert data["data"][0]["price"] == 1200 and data["numeric"] == 1
+    assert data["note"] == "Used the largest of 2 tables"
+
+    empty = io.BytesIO()
+    Document().save(empty)
+    assert "No tables" in post("d.docx", empty.getvalue()).get_json()["error"]
+    assert "Images are not supported" in post("d.png", b"x").get_json()["error"]
+    assert post("d.xlsx", b"not a zip").status_code == 400
+    assert post("d.pdf", b"not a pdf").status_code == 400
+
+
+def test_pdf_tables_join_across_pages():
+    head, a, b = ["k", "v"], ["a", "1"], ["b", "2"]
+    joined = join_page_tables([(0, [head, a]), (1, [head, b]), (3, [head, a])])
+    assert joined == [[head, a, b], [head, a]]
+    assert table_to_df([head, [None, None], a])["v"].tolist() == [1]
+    assert not usable([["only header", "x"]]) and not usable([["one"], ["column"]])
+
+
+def test_ranking():
+    n = 200
+    rng = np.random.default_rng(1)
+    x = rng.normal(size=n)
+    group = np.where(x > 0, "high", "low")
+    df = pd.DataFrame({
+        "order_id": range(n),
+        "strong": x,
+        "inverse": -x + rng.normal(scale=0.1, size=n),
+        "noise": rng.normal(size=n),
+        "group": group,
+        "same": 1,
+        "code": [f"c{i}" for i in range(n)],
+        "goal": x * 3 + rng.normal(scale=0.5, size=n),
+    })
+    body = df.to_csv(index=False).encode()
+    data = post("d.csv", body, "/api/rank", target="goal").get_json()
+    scores = {row["name"]: row for row in data["ranked"]}
+    assert scores["strong"]["score"] > 0.9 and scores["strong"]["direction"] == "up"
+    assert scores["inverse"]["direction"] == "down"
+    assert scores["noise"]["label"] in ("Little or none", "Weak")
+    assert scores["group"]["score"] > 0.5 and scores["group"]["method"] == "Group differences"
+    assert data["ranked"][0]["score"] >= data["ranked"][-1]["score"]
+    assert {row["name"] for row in data["excluded"]} == {"order_id", "same", "code"}
+
+    # text goal, and many one-off categories score no higher than chance
+    by_group = post("d.csv", body, "/api/rank", target="group").get_json()
+    assert {r["name"]: r["score"] for r in by_group["ranked"]}["strong"] > 0.5
+    assert cramers_v(pd.Series(["a", "b"] * 50), pd.Series(["c", "c", "d", "d"] * 25)) == 0
+
+    quality = post("d.csv", body, "/api/rank").get_json()
+    assert quality["target"] is None and any(r["name"] == "strong" for r in quality["ranked"])
+    assert post("d.csv", body, "/api/rank", target="zz").status_code == 400
+    assert "ID" in post("d.csv", body, "/api/rank", target="order_id").get_json()["error"]
+
+
+def test_export_xlsx():
+    res = post("d.csv", b"a,b,d\n1,=1+1,2024-01-05T00:00:00.000\n", "/api/export", dates='["d"]')
+    assert res.status_code == 200 and res.headers["Content-Disposition"].endswith("data.xlsx")
+    sheet = load_workbook(io.BytesIO(res.data)).active
+    assert [c.value for c in sheet[1]] == ["a", "b", "d"]
+    assert sheet["B2"].data_type == "s" and sheet["B2"].value == "=1+1"
+    assert sheet["C2"].is_date
+    assert post("d.csv", b"", "/api/export").status_code == 400
+
+
+def test_summary_counts_problems():
+    data = post("d.csv", b"a,b\n1, x\n1, x\n2,y\n").get_json()
+    assert data["duplicates"] == 1 and data["untrimmed"] == 2
+
+
 if __name__ == "__main__":
     test_csv_summary()
     test_json_and_errors()
     test_clean_actions()
     test_more_clean_actions()
+    test_documents()
+    test_pdf_tables_join_across_pages()
+    test_ranking()
+    test_export_xlsx()
+    test_summary_counts_problems()
     print("ok")
